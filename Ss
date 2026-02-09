@@ -1,9 +1,7 @@
-addEventListener('fetch', event => {
-  event.respondWith(handleRequest(event.request))
-})
-
-async function handleRequest(request) {
-  return new Response('س', {
-    headers: { 'content-type': 'text/plain;charset=UTF-8' },
-  })
+export default {
+  async fetch(request, env, ctx) {
+    return new Response("سلام از configfars 😈🔥", {
+      status: 200
+    });
+  }
 }
