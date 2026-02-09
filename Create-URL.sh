@@ -11,27 +11,14 @@ echo ""
 # ===============================
 echo "🚀 Installing requirements..."
 pkg update -y >/dev/null 2>&1
-pkg install -y python nodejs php curl wget openssl >/dev/null 2>&1
+pkg install -y python nodejs php curl wget unzip git >/dev/null 2>&1
 
 # ===============================
-# Install Cloudflared
+# Install Localtunnel (for public URL)
 # ===============================
-if [ ! -f "$PREFIX/bin/cloudflared" ]; then
-    echo "🌐 Installing Cloudflared..."
-    ARCH=$(uname -m)
-    if [[ "$ARCH" == "aarch64" ]]; then
-        CF_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64"
-    elif [[ "$ARCH" == "arm"* ]]; then
-        CF_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm"
-    elif [[ "$ARCH" == "x86_64" ]]; then
-        CF_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
-    else
-        echo "❌ Unsupported architecture: $ARCH"
-        exit 1
-    fi
-    wget -q "$CF_URL" -O cloudflared
-    chmod +x cloudflared
-    mv cloudflared "$PREFIX/bin/cloudflared"
+if ! command -v lt >/dev/null 2>&1; then
+    echo "🌐 Installing localtunnel..."
+    npm install -g localtunnel
 fi
 
 # ===============================
@@ -40,7 +27,7 @@ fi
 echo ""
 read -p "📌 Enter file path OR https url: " INPUT
 
-WORKDIR="$HOME/configfars_worker"
+WORKDIR="$HOME/configfars_public"
 mkdir -p "$WORKDIR"
 cd "$WORKDIR"
 rm -rf * >/dev/null 2>&1
@@ -66,7 +53,6 @@ echo "✅ Loaded file into: $WORKDIR/codefile"
 # Detect Code Type
 # ===============================
 CONTENT=$(cat codefile)
-
 RUNTIME="html"
 
 if echo "$CONTENT" | grep -q "<html"; then
@@ -91,7 +77,7 @@ PORT=8080
 kill_port() {
     pkill -f "http.server $PORT" >/dev/null 2>&1 || true
     pkill -f "node server.js" >/dev/null 2>&1 || true
-    pkill -f "php -S 127.0.0.1:$PORT" >/dev/null 2>&1 || true
+    pkill -f "php -S 0.0.0.0:$PORT" >/dev/null 2>&1 || true
 }
 
 kill_port
@@ -110,7 +96,7 @@ if [[ "$RUNTIME" == "html" ]]; then
 elif [[ "$RUNTIME" == "php" ]]; then
     cp codefile index.php
     echo "🐘 Starting PHP server..."
-    nohup php -S 127.0.0.1:$PORT >/dev/null 2>&1 &
+    nohup php -S 0.0.0.0:$PORT >/dev/null 2>&1 &
 
 # ===============================
 # PYTHON
@@ -144,8 +130,8 @@ const server = http.createServer(async (req, res) => {
   res.end("✅ Node code loaded, but no fetch handler detected");
 });
 
-server.listen($PORT, "127.0.0.1", () => {
-  console.log("Node server running on http://127.0.0.1:$PORT");
+server.listen($PORT, "0.0.0.0", () => {
+  console.log("Node server running on http://0.0.0.0:$PORT");
 });
 EOF
     nohup node server.js >/dev/null 2>&1 &
@@ -216,26 +202,24 @@ const server = http.createServer(async (req,res) => {
   }
 });
 
-server.listen(8080,"127.0.0.1",()=>console.log("Worker Node server running on http://127.0.0.1:8080"));
+server.listen($PORT,"0.0.0.0",()=>console.log("Worker Node server running on http://0.0.0.0:8080"));
 EOF
     nohup node server.js >/dev/null 2>&1 &
 fi
 
-sleep 3
+sleep 2
 
 # ===============================
-# Cloudflare Tunnel
+# Start Localtunnel for Public URL
 # ===============================
 echo ""
-echo "🌐 Starting Cloudflare Tunnel..."
-cloudflared tunnel --url http://127.0.0.1:$PORT --no-autoupdate 2>&1 | tee cf.log &
+echo "🌐 Starting public URL with localtunnel..."
+lt --port $PORT --subdomain configfars_public 2>&1 | tee lt.log &
 
 sleep 4
-
 echo ""
 echo "=============================="
-echo "🌍 Your Temporary URL:"
-grep -o "https://[a-zA-Z0-9.-]*\.trycloudflare.com" cf.log | head -n 1
+echo "🌍 Your Public URL (Internet):"
+grep -o "https://[a-zA-Z0-9.-]*\.loca\.lt" lt.log | head -n 1
 echo "=============================="
-echo ""
-echo "⚡ Keep Termux open to keep tunnel alive."
+echo "⚡ Keep Termux open to keep server alive."
